@@ -21,16 +21,16 @@ using namespace FRAME;
 
 class CMsgFinAckHandler : public CBaseObject
 {
-//	struct UserSession
-//	{
-//		UserSession()
-//		{
-//		}
-//
-//		ControlHead			m_stCtlHead;
-//		MsgHeadCS			m_stMsgHeadCS;
-//		CMsgFinAckReq		m_stMsgFinAckReq;
-//	};
+	struct UserSession
+	{
+		UserSession()
+		{
+		}
+
+		ControlHead			m_stCtlHead;
+		MsgHeadCS			m_stMsgHeadCS;
+		CMsgFinAckReq		m_stMsgFinAckReq;
+	};
 
 public:
 
@@ -48,6 +48,10 @@ public:
 	}
 
 	int32_t MsgFinAck(ICtlHead *pCtlHead, IMsgHead *pMsgHead, IMsgBody *pMsgBody, uint8_t *pBuf, int32_t nBufSize);
+
+	int32_t OnSessionGetUnreadMsgCount(int32_t nResult, void *pReply, void *pSession);
+
+	int32_t OnRedisSessionTimeout(void *pTimerData);
 };
 
 

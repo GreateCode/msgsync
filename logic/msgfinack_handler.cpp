@@ -50,8 +50,8 @@ int32_t CMsgFinAckHandler::MsgFinAck(ICtlHead *pCtlHead, IMsgHead *pMsgHead, IMs
 
 	MsgHeadCS stMsgHeadCS;
 	stMsgHeadCS.m_nMsgID = MSGID_MSGFINACK_RESP;
-	stMsgHeadCS.m_nSrcUin = pMsgHeadCS->m_nSrcUin;
-	stMsgHeadCS.m_nDstUin = pMsgHeadCS->m_nDstUin;
+	stMsgHeadCS.m_nSrcUin = pMsgHeadCS->m_nDstUin;
+	stMsgHeadCS.m_nDstUin = pMsgHeadCS->m_nSrcUin;
 
 	CMsgFinAckResp stMsgFinAckResp;
 	stMsgFinAckResp.m_nSyncSeq = pMsgFinAckReq->m_nSyncSeq;
@@ -65,6 +65,84 @@ int32_t CMsgFinAckHandler::MsgFinAck(ICtlHead *pCtlHead, IMsgHead *pMsgHead, IMs
 
 	g_Frame.Dump(pCtlHead, &stMsgHeadCS, &stMsgFinAckResp, "send ");
 
+	CRedisSessionBank *pRedisSessionBank = (CRedisSessionBank *)g_Frame.GetBank(BANK_REDIS_SESSION);
+	RedisSession *pSession = pRedisSessionBank->CreateSession(this, static_cast<RedisReply>(&CMsgFinAckHandler::OnSessionGetUnreadMsgCount),
+			static_cast<TimerProc>(&CMsgFinAckHandler::OnRedisSessionTimeout));
+	UserSession *pSessionData = new(pSession->GetSessionData()) UserSession();
+	pSessionData->m_stCtlHead = *pControlHead;
+	pSessionData->m_stMsgHeadCS = *pMsgHeadCS;
+	pSessionData->m_stMsgFinAckReq = *pMsgFinAckReq;
+
+	pUnreadMsgChannel->ZCount(pSession, itoa(pMsgHeadCS->m_nSrcUin));
+
 	return 0;
 }
+
+int32_t CMsgFinAckHandler::OnSessionGetUnreadMsgCount(int32_t nResult, void *pReply, void *pSession)
+{
+	redisReply *pRedisReply = (redisReply *)pReply;
+	RedisSession *pRedisSession = (RedisSession *)pSession;
+	UserSession *pUserSession = (UserSession *)pRedisSession->GetSessionData();
+
+	bool bIsSyncNoti = true;
+	do
+	{
+		if(pRedisReply->type == REDIS_REPLY_ERROR)
+		{
+			bIsSyncNoti = false;
+			break;
+		}
+
+		if(pRedisReply->type == REDIS_REPLY_INTEGER)
+		{
+			if(pRedisReply->integer <= 0)
+			{
+				bIsSyncNoti = false;
+				break;
+			}
+		}
+		else
+		{
+			bIsSyncNoti = false;
+			break;
+		}
+	}while(0);
+
+	if(bIsSyncNoti)
+	{
+		MsgHeadCS stMsgHeadCS;
+		stMsgHeadCS.m_nMsgID = MSGID_STATUSSYNC_NOTI;
+		stMsgHeadCS.m_nDstUin = pUserSession->m_stMsgHeadCS.m_nSrcUin;
+
+		CStatusSyncNoti stStatusSyncNoti;
+
+		uint8_t arrRespBuf[MAX_MSG_SIZE];
+
+		CMsgDispatchConfig *pMsgDispatchConfig = (CMsgDispatchConfig *)g_Frame.GetConfig(CONFIG_MSGDISPATCH);
+		CRedisBank *pRedisBank = (CRedisBank *)g_Frame.GetBank(BANK_REDIS);
+		CRedisChannel *pPushClientChannel = pRedisBank->GetRedisChannel(pUserSession->m_stCtlHead.m_nGateID, pMsgDispatchConfig->GetChannelKey(MSGID_STATUSSYNC_NOTI));
+
+		uint16_t nTotalSize = CServerHelper::MakeMsg(&pUserSession->m_stCtlHead, &stMsgHeadCS, &stStatusSyncNoti, arrRespBuf, sizeof(arrRespBuf));
+		pPushClientChannel->RPush(NULL, (char *)arrRespBuf, nTotalSize);
+	}
+
+	CRedisSessionBank *pRedisSessionBank = (CRedisSessionBank *)g_Frame.GetBank(BANK_REDIS_SESSION);
+	pRedisSessionBank->DestroySession(pRedisSession);
+
+	return 0;
+}
+
+int32_t CMsgFinAckHandler::OnRedisSessionTimeout(void *pTimerData)
+{
+	CRedisSessionBank *pRedisSessionBank = (CRedisSessionBank *)g_Frame.GetBank(BANK_REDIS_SESSION);
+	RedisSession *pRedisSession = (RedisSession *)pTimerData;
+	UserSession *pUserSession = (UserSession *)pRedisSession->GetSessionData();
+
+	CMsgDispatchConfig *pMsgDispatchConfig = (CMsgDispatchConfig *)g_Frame.GetConfig(CONFIG_MSGDISPATCH);
+	CRedisBank *pRedisBank = (CRedisBank *)g_Frame.GetBank(BANK_REDIS);
+
+	pRedisSessionBank->DestroySession(pRedisSession);
+	return 0;
+}
+
 

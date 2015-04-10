@@ -86,12 +86,12 @@ int32_t CMsgSyncHandler::OnSessionGetUnreadMsgList(int32_t nResult, void *pReply
 		MsgHeadCS stMsgHeadCS;
 		stMsgHeadCS.m_nMsgID = MSGID_MSGPUSH_NOTI;
 		stMsgHeadCS.m_nSeq = pUserSession->m_stMsgHeadCS.m_nSeq;
-		stMsgHeadCS.m_nSrcUin = pUserSession->m_stMsgHeadCS.m_nSrcUin;
-		stMsgHeadCS.m_nDstUin = pUserSession->m_stMsgHeadCS.m_nDstUin;
+		stMsgHeadCS.m_nSrcUin = pUserSession->m_stMsgHeadCS.m_nDstUin;
+		stMsgHeadCS.m_nDstUin = pUserSession->m_stMsgHeadCS.m_nSrcUin;
 
 		for(size_t i = 0; i < pRedisReply->elements; ++i)
 		{
-			redisReply *pReplyElement = pRedisReply->element[0];
+			redisReply *pReplyElement = pRedisReply->element[i];
 			if(pReplyElement->type != REDIS_REPLY_NIL)
 			{
 				CMsgPushNoti stMsgPushNoti;
@@ -103,7 +103,7 @@ int32_t CMsgSyncHandler::OnSessionGetUnreadMsgList(int32_t nResult, void *pReply
 				{
 					stMsgPushNoti.m_nSyncFlag = CMsgPushNoti::enmSyncFlag_Sync;
 				}
-				stMsgPushNoti.m_nSyncSeq = 0;
+				stMsgPushNoti.m_nSyncSeq = pUserSession->m_stMsgHeadCS.m_nSeq + i;
 				stMsgPushNoti.m_nMsgSize = pReplyElement->len;
 				memcpy(stMsgPushNoti.m_arrMsg, pReplyElement->str, pReplyElement->len);
 

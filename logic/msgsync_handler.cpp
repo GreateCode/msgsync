@@ -15,7 +15,6 @@
 #include "../../include/cachekey_define.h"
 #include "../../include/control_head.h"
 #include "../../include/typedef.h"
-#include "../config/msgdispatch_config.h"
 #include "../config/string_config.h"
 #include "../server_typedef.h"
 #include "../bank/redis_bank.h"
@@ -35,6 +34,14 @@ int32_t CMsgSyncHandler::MsgSync(ICtlHead *pCtlHead, IMsgHead *pMsgHead, IMsgBod
 	if(pMsgHeadCS == NULL)
 	{
 		return 0;
+	}
+
+	if(pControlHead->m_nUin != pMsgHeadCS->m_nSrcUin)
+	{
+		CRedisBank *pRedisBank = (CRedisBank *)g_Frame.GetBank(BANK_REDIS);
+		CRedisChannel *pClientRespChannel = pRedisBank->GetRedisChannel(pControlHead->m_nGateID, CLIENT_RESP);
+
+		return CServerHelper::KickUser(pControlHead, pMsgHeadCS, pClientRespChannel, KickReason_NotLogined);
 	}
 
 	CMsgSyncReq *pMsgSyncReq = dynamic_cast<CMsgSyncReq *>(pMsgBody);
@@ -68,9 +75,8 @@ int32_t CMsgSyncHandler::OnSessionGetUnreadMsgList(int32_t nResult, void *pReply
 	CRedisSessionBank *pRedisSessionBank = (CRedisSessionBank *)g_Frame.GetBank(BANK_REDIS_SESSION);
 	CStringConfig *pStringConfig = (CStringConfig *)g_Frame.GetConfig(CONFIG_STRING);
 
-	CMsgDispatchConfig *pMsgDispatchConfig = (CMsgDispatchConfig *)g_Frame.GetConfig(CONFIG_MSGDISPATCH);
 	CRedisBank *pRedisBank = (CRedisBank *)g_Frame.GetBank(BANK_REDIS);
-	CRedisChannel *pMsgPushChannel = pRedisBank->GetRedisChannel(pMsgDispatchConfig->GetChannelKey(MSGID_MSGPUSH_NOTI));
+	CRedisChannel *pMsgPushChannel = pRedisBank->GetRedisChannel(CLIENT_RESP);
 	if(pMsgPushChannel == NULL)
 	{
 		WRITE_WARN_LOG(SERVER_NAME, "it's not found redis channel by msgid!{msgid=%d, srcuin=%u, dstuin=%u}\n", pUserSession->m_stMsgHeadCS.m_nMsgID,
@@ -126,7 +132,6 @@ int32_t CMsgSyncHandler::OnRedisSessionTimeout(void *pTimerData)
 	RedisSession *pRedisSession = (RedisSession *)pTimerData;
 	UserSession *pUserSession = (UserSession *)pRedisSession->GetSessionData();
 
-	CMsgDispatchConfig *pMsgDispatchConfig = (CMsgDispatchConfig *)g_Frame.GetConfig(CONFIG_MSGDISPATCH);
 	CRedisBank *pRedisBank = (CRedisBank *)g_Frame.GetBank(BANK_REDIS);
 //	CRedisChannel *pMsgPushChannel = pRedisBank->GetRedisChannel(pMsgDispatchConfig->GetChannelKey(MSGID_MSGPUSH_NOTI));
 //	if(pMsgPushChannel == NULL)

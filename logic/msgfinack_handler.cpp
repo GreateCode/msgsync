@@ -116,19 +116,10 @@ int32_t CMsgFinAckHandler::OnSessionGetUnreadMsgCount(int32_t nResult, void *pRe
 
 	if(bIsSyncNoti)
 	{
-		MsgHeadCS stMsgHeadCS;
-		stMsgHeadCS.m_nMsgID = MSGID_STATUSSYNC_NOTI;
-		stMsgHeadCS.m_nDstUin = pUserSession->m_stMsgHeadCS.m_nSrcUin;
-
-		CStatusSyncNoti stStatusSyncNoti;
-
-		uint8_t arrRespBuf[MAX_MSG_SIZE];
-
 		CRedisBank *pRedisBank = (CRedisBank *)g_Frame.GetBank(BANK_REDIS);
 		CRedisChannel *pPushClientChannel = pRedisBank->GetRedisChannel(pUserSession->m_stCtlHead.m_nGateID, CLIENT_RESP);
 
-		uint16_t nTotalSize = CServerHelper::MakeMsg(&pUserSession->m_stCtlHead, &stMsgHeadCS, &stStatusSyncNoti, arrRespBuf, sizeof(arrRespBuf));
-		pPushClientChannel->RPush(NULL, (char *)arrRespBuf, nTotalSize);
+		CServerHelper::SendSyncNoti(pPushClientChannel, &pUserSession->m_stCtlHead, pUserSession->m_stMsgHeadCS.m_nSrcUin);
 	}
 
 	CRedisSessionBank *pRedisSessionBank = (CRedisSessionBank *)g_Frame.GetBank(BANK_REDIS_SESSION);

@@ -6,18 +6,18 @@
  */
 
 #include "msgsync_handler.h"
-#include "../../common/common_datetime.h"
-#include "../../common/common_api.h"
-#include "../../frame/frame.h"
-#include "../../frame/server_helper.h"
-#include "../../frame/redissession_bank.h"
-#include "../../logger/logger.h"
-#include "../../include/cachekey_define.h"
-#include "../../include/control_head.h"
-#include "../../include/typedef.h"
-#include "../config/string_config.h"
-#include "../server_typedef.h"
-#include "../bank/redis_bank.h"
+#include "common/common_datetime.h"
+#include "common/common_api.h"
+#include "frame/frame.h"
+#include "frame/server_helper.h"
+#include "frame/redissession_bank.h"
+#include "frame/cachekey_define.h"
+#include "logger/logger.h"
+#include "include/control_head.h"
+#include "include/typedef.h"
+#include "config/string_config.h"
+#include "server_typedef.h"
+#include "bank/redis_bank.h"
 
 using namespace LOGGER;
 using namespace FRAME;
@@ -39,7 +39,7 @@ int32_t CMsgSyncHandler::MsgSync(ICtlHead *pCtlHead, IMsgHead *pMsgHead, IMsgBod
 	if(pControlHead->m_nUin != pMsgHeadCS->m_nSrcUin)
 	{
 		CRedisBank *pRedisBank = (CRedisBank *)g_Frame.GetBank(BANK_REDIS);
-		CRedisChannel *pClientRespChannel = pRedisBank->GetRedisChannel(pControlHead->m_nGateID, CLIENT_RESP);
+		CRedisChannel *pClientRespChannel = pRedisBank->GetRedisChannel(pControlHead->m_nGateRedisAddress, pControlHead->m_nGateRedisPort);
 
 		return CServerHelper::KickUser(pControlHead, pMsgHeadCS, pClientRespChannel, KickReason_NotLogined);
 	}
@@ -59,9 +59,8 @@ int32_t CMsgSyncHandler::MsgSync(ICtlHead *pCtlHead, IMsgHead *pMsgHead, IMsgBod
 	pSessionData->m_stMsgSyncReq = *pMsgSyncReq;
 
 	CRedisBank *pRedisBank = (CRedisBank *)g_Frame.GetBank(BANK_REDIS);
-	UserUnreadMsgList *pUnreadMsgList = (UserUnreadMsgList *)g_Frame.GetConfig(USER_UNREADMSGLIST);
-	CRedisChannel *pUnreadMsgChannel = pRedisBank->GetRedisChannel(pUnreadMsgList->string);
-	pUnreadMsgChannel->ZRangeByScore(pSession, itoa(pMsgHeadCS->m_nSrcUin));
+	CRedisChannel *pUnreadMsgChannel = pRedisBank->GetRedisChannel(UserUnreadMsgList::servername, pMsgHeadCS->m_nSrcUin);
+	pUnreadMsgChannel->ZRangeByScore(pSession, CServerHelper::MakeRedisKey(UserUnreadMsgList::keyname, pMsgHeadCS->m_nSrcUin));
 
 	return 0;
 }
@@ -76,7 +75,7 @@ int32_t CMsgSyncHandler::OnSessionGetUnreadMsgList(int32_t nResult, void *pReply
 	CStringConfig *pStringConfig = (CStringConfig *)g_Frame.GetConfig(CONFIG_STRING);
 
 	CRedisBank *pRedisBank = (CRedisBank *)g_Frame.GetBank(BANK_REDIS);
-	CRedisChannel *pMsgPushChannel = pRedisBank->GetRedisChannel(CLIENT_RESP);
+	CRedisChannel *pMsgPushChannel = pRedisBank->GetRedisChannel(pUserSession->m_stCtlHead.m_nGateRedisAddress, pUserSession->m_stCtlHead.m_nGateRedisPort);
 	if(pMsgPushChannel == NULL)
 	{
 		WRITE_WARN_LOG(SERVER_NAME, "it's not found redis channel by msgid!{msgid=%d, srcuin=%u, dstuin=%u}\n", pUserSession->m_stMsgHeadCS.m_nMsgID,
@@ -114,7 +113,7 @@ int32_t CMsgSyncHandler::OnSessionGetUnreadMsgList(int32_t nResult, void *pReply
 				memcpy(stMsgPushNoti.m_arrMsg, pReplyElement->str, pReplyElement->len);
 
 				uint16_t nTotalSize = CServerHelper::MakeMsg(&pUserSession->m_stCtlHead, &stMsgHeadCS, &stMsgPushNoti, arrRespBuf, sizeof(arrRespBuf));
-				pMsgPushChannel->RPush(NULL, (char *)arrRespBuf, nTotalSize);
+				pMsgPushChannel->RPush(NULL, CServerHelper::MakeRedisKey(ClientResp::keyname, pUserSession->m_stCtlHead.m_nGateID), (char *)arrRespBuf, nTotalSize);
 
 				g_Frame.Dump(&pUserSession->m_stCtlHead, &stMsgHeadCS, &stMsgPushNoti, "send ");
 			}

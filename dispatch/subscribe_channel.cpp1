@@ -1,0 +1,200 @@
+/*
+ * subscribe_channel.cpp
+ *
+ *  Created on: Mar 10, 2015
+ *      Author: jimm
+ */
+
+#include "subscribe_channel.h"
+#include "../../hiredis/hiredis.h"
+#include "../server_typedef.h"
+#include "../../logger/logger.h"
+#include "../../frame/frame.h"
+#include "../../frame/redissession_bank.h"
+#include "../../common/common_codeengine.h"
+#include "../../include/cachekey_define.h"
+#include "../../include/sync_msg.h"
+#include "../bank/redis_bank.h"
+#include "../config/server_config.h"
+#include <string.h>
+
+using namespace FRAME;
+using namespace LOGGER;
+
+int32_t CSubscribeChannel::OnConnected()
+{
+	CRedisSessionBank *pRedisSessionBank = (CRedisSessionBank *)g_Frame.GetBank(BANK_REDIS_SESSION);
+	m_pSubscribeSession = pRedisSessionBank->CreateSession(this, static_cast<RedisReply>(&CSubscribeChannel::OnRedisReply),
+			NULL);
+
+	return 0;
+}
+
+void CSubscribeChannel::OnClosed()
+{
+	if(m_pSubscribeSession != NULL)
+	{
+		CRedisSessionBank *pRedisSessionBank = (CRedisSessionBank *)g_Frame.GetBank(BANK_REDIS_SESSION);
+		pRedisSessionBank->DestroySession(m_pSubscribeSession);
+	}
+}
+
+int32_t CSubscribeChannel::Run()
+{
+	if(m_nRestCount > 0)
+	{
+		--m_nRestCount;
+	}
+	else
+	{
+		LPop(m_pSubscribeSession);
+	}
+	return 0;
+}
+
+int32_t CSubscribeChannel::OnRedisReply(int32_t nResult, void *pReply, void *pSession)
+{
+	redisReply *pRedisReply = (redisReply *)pReply;
+	if(nResult != 0)
+	{
+		WRITE_WARN_LOG(SERVER_NAME, "recv redis reply error!{%s}\n", pRedisReply->str);
+		return 0;
+	}
+
+	if(pRedisReply->type == REDIS_REPLY_STRING)
+	{
+		UserUnreadLock *pUserUnreadLock = (UserUnreadLock *)g_Frame.GetConfig(USER_UNREAD_LOCK);
+		string strLockName = string(pUserUnreadLock->string) + string(pRedisReply->str);
+
+		CRedisBank *pRedisBank = (CRedisBank *)g_Frame.GetBank(BANK_REDIS);
+		CRedisChannel *pUnHandleUserListChannel = pRedisBank->GetRedisChannel(UNHANDLE_USER_LIST);
+
+		CRedisLockBank *pRedisLockBank = (CRedisLockBank *)g_Frame.GetBank(BANK_REDIS_LOCK);
+		RedisLock *pRedisLock = pRedisLockBank->CreateLock(pUnHandleUserListChannel, this, static_cast<LockResult>(&CSubscribeChannel::OnLockResult));
+		uint32_t *pUin = new(pRedisLock->GetSessionData()) uint32_t();
+		*pUin = atoi(pRedisReply->str);
+
+		pRedisLock->Lock((char *)strLockName.c_str());
+
+		m_nIdleCount = 0;
+	}
+	else
+	{
+		m_nIdleCount++;
+		if(m_nIdleCount > 10)
+		{
+			m_nRestCount = m_nIdleCount;
+			m_nIdleCount = 0;
+		}
+	}
+
+	return 0;
+}
+
+void CSubscribeChannel::OnLockResult(int32_t nResult, RedisLock *pRedisLock)
+{
+	if(nResult == RedisLock::enmRedisLock_Success)
+	{
+		CRedisSessionBank *pRedisSessionBank = (CRedisSessionBank *)g_Frame.GetBank(BANK_REDIS_SESSION);
+		RedisSession *pRedisSession = pRedisSessionBank->CreateSession(this, static_cast<RedisReply>(&CSubscribeChannel::OnSessionGetUserBaseInfo),
+				static_cast<TimerProc>(&CSubscribeChannel::OnRedisSessionTimeout));
+		UserSession *pUserSession = new (pRedisSession->GetSessionData()) UserSession();
+		pUserSession->m_nLockIndex = pRedisLock->GetSessionIndex();
+		pUserSession->m_nUin = *((uint32_t *)(pRedisLock->GetSessionData()));
+
+		UserSessionInfo *pUserSessionInfo = (UserSessionInfo *)g_Frame.GetConfig(USER_BASEINFO);
+
+		CRedisBank *pRedisBank = (CRedisBank *)g_Frame.GetBank(BANK_REDIS);
+		CRedisChannel *pUserSessionChannel = pRedisBank->GetRedisChannel(USER_SESSIONINFO);
+		pUserSessionChannel->HMGet(pRedisSession, itoa(pUserSession->m_nUin), "%s %s %s %s", pUserSessionInfo->sessionid,
+				pUserSessionInfo->clientaddress, pUserSessionInfo->clientport, pUserSessionInfo->gateid);
+	}
+	else
+	{
+		CRedisLockBank *pRedisLockBank = (CRedisLockBank *)g_Frame.GetBank(BANK_REDIS_LOCK);
+		pRedisLockBank->DestroyLock(pRedisLock);
+	}
+}
+
+int32_t CSubscribeChannel::OnSessionGetUserBaseInfo(int32_t nResult, void *pReply, void *pSession)
+{
+	redisReply *pRedisReply = (redisReply *)pReply;
+	RedisSession *pRedisSession = (RedisSession *)pSession;
+	CRedisBank *pRedisBank = (CRedisBank *)g_Frame.GetBank(BANK_REDIS);
+	CRedisSessionBank *pRedisSessionBank = (CRedisSessionBank *)g_Frame.GetBank(BANK_REDIS_SESSION);
+	UserSession *pUserSession = (UserSession *)pRedisSession->GetSessionData();
+
+	CServerConfig *pServerConfig = (CServerConfig *)g_Frame.GetConfig(CONFIG_SERVER);
+
+	ControlHead stCtlHead;
+
+	bool bIsReturn = false;
+	do
+	{
+		if(pRedisReply->type == REDIS_REPLY_ERROR)
+		{
+			bIsReturn = true;
+			break;
+		}
+
+		if(pRedisReply->type == REDIS_REPLY_ARRAY)
+		{
+			redisReply *pReplyElement = pRedisReply->element[0];
+			if(pReplyElement->type != REDIS_REPLY_NIL)
+			{
+				stCtlHead.m_nSessionID = atoi(pReplyElement->str);
+			}
+
+			pReplyElement = pRedisReply->element[1];
+			if(pReplyElement->type != REDIS_REPLY_NIL)
+			{
+				stCtlHead.m_nClientAddress = atoi(pReplyElement->str);
+			}
+
+			pReplyElement = pRedisReply->element[2];
+			if(pReplyElement->type != REDIS_REPLY_NIL)
+			{
+				stCtlHead.m_nClientPort = atoi(pReplyElement->str);
+			}
+
+			pReplyElement = pRedisReply->element[3];
+			if(pReplyElement->type != REDIS_REPLY_NIL)
+			{
+				stCtlHead.m_nGateID = atoi(pReplyElement->str);
+			}
+		}
+	}while(0);
+
+	if(!bIsReturn)
+	{
+		stCtlHead.m_nUin = pUserSession->m_nUin;
+
+		MsgHeadCS stMsgHeadCS;
+		stMsgHeadCS.m_nMsgID = MSGID_STATUSSYNC_NOTI;
+		stMsgHeadCS.m_nDstUin = pUserSession->m_nUin;
+
+		CStatusSyncNoti stStatusSyncNoti;
+		stStatusSyncNoti.m_nServerID = pServerConfig->GetServerID();
+
+		uint8_t arrRespBuf[MAX_MSG_SIZE];
+
+		CRedisChannel *pPushClientChannel = pRedisBank->GetRedisChannel(stCtlHead.m_nGateID, "server:statussync:noti");
+
+		uint16_t nTotalSize = CServerHelper::MakeMsg(&stCtlHead, &stMsgHeadCS, &stStatusSyncNoti, arrRespBuf, sizeof(arrRespBuf));
+		pPushClientChannel->RPush(NULL, (char *)arrRespBuf, nTotalSize);
+	}
+
+	pRedisSessionBank->DestroySession(pRedisSession);
+
+	return 0;
+}
+
+int32_t CSubscribeChannel::OnRedisSessionTimeout(void *pTimerData)
+{
+	CRedisSessionBank *pRedisSessionBank = (CRedisSessionBank *)g_Frame.GetBank(BANK_REDIS_SESSION);
+	RedisSession *pRedisSession = (RedisSession *)pTimerData;
+	pRedisSessionBank->DestroySession(pRedisSession);
+	return 0;
+}
+
+

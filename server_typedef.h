@@ -13,9 +13,9 @@
 #define SERVER_NAME			"push"
 
 #define CONFIG_SERVER		"./server_config.xml"
-#define CONFIG_REDIS		"./redis_config.xml"
+#define CONFIG_REDIS		"redis_config.xml"
 #define CONFIG_MSGDISPATCH	"./msgdispatch_config.xml"
-#define CONFIG_STRING		"./string_config.xml"
+#define CONFIG_STRING		"string_config.xml"
 
 #define BANK_REDIS			"redis_bank"
 

@@ -36,7 +36,7 @@ int32_t CMsgFinAckHandler::MsgFinAck(ICtlHead *pCtlHead, IMsgHead *pMsgHead, IMs
 		return 0;
 	}
 
-	if(pControlHead->m_nUin != pMsgHeadCS->m_nSrcUin)
+	if((pControlHead->m_nUin == 0) || (pControlHead->m_nUin != pMsgHeadCS->m_nSrcUin))
 	{
 		CRedisBank *pRedisBank = (CRedisBank *)g_Frame.GetBank(BANK_REDIS);
 		CRedisChannel *pClientRespChannel = pRedisBank->GetRedisChannel(pControlHead->m_nGateRedisAddress, pControlHead->m_nGateRedisPort);
@@ -79,7 +79,7 @@ int32_t CMsgFinAckHandler::MsgFinAck(ICtlHead *pCtlHead, IMsgHead *pMsgHead, IMs
 	pSessionData->m_stMsgHeadCS = *pMsgHeadCS;
 	pSessionData->m_stMsgFinAckReq = *pMsgFinAckReq;
 
-	pUnreadMsgChannel->ZCount(pSession, CServerHelper::MakeRedisKey(UserUnreadMsgList::keyname, pMsgHeadCS->m_nSrcUin));
+	pUnreadMsgChannel->ZCard(pSession, CServerHelper::MakeRedisKey(UserUnreadMsgList::keyname, pMsgHeadCS->m_nSrcUin));
 
 	return 0;
 }

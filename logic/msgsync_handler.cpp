@@ -36,7 +36,7 @@ int32_t CMsgSyncHandler::MsgSync(ICtlHead *pCtlHead, IMsgHead *pMsgHead, IMsgBod
 		return 0;
 	}
 
-	if(pControlHead->m_nUin != pMsgHeadCS->m_nSrcUin)
+	if((pControlHead->m_nUin == 0) || (pControlHead->m_nUin != pMsgHeadCS->m_nSrcUin))
 	{
 		CRedisBank *pRedisBank = (CRedisBank *)g_Frame.GetBank(BANK_REDIS);
 		CRedisChannel *pClientRespChannel = pRedisBank->GetRedisChannel(pControlHead->m_nGateRedisAddress, pControlHead->m_nGateRedisPort);

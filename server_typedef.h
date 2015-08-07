@@ -10,7 +10,7 @@
 
 #include "common/common_typedef.h"
 
-#define SERVER_NAME			"push"
+#define SERVER_NAME			"msgsync"
 
 #define CONFIG_SERVER		"./server_config.xml"
 #define CONFIG_REDIS		"redis_config.xml"

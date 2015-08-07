@@ -9,18 +9,18 @@ ifeq ($(mode),d)
 	BIN_DIR = $(BASE_DIR)/bin/Debug
 	CPPFLAGS= -g -gdwarf-2 -fPIC -Wall -DDEBUG $(INC) -Wno-invalid-offsetof
 	LDFLAGS = -g -fPIC -L$(LIB_DIR) -lpthread -llogger -lcommon -lframe -lnetevent -lcommon -ltinyxml -lhiredis -lrt -levent
-	DEBUG_TARGET = $(BIN_DIR)/push$(BIN_SUFFIX)
+	DEBUG_TARGET = $(BIN_DIR)/msgsync$(BIN_SUFFIX)
 	TARGET	= $(DEBUG_TARGET)
 else
 	LIB_DIR = $(RELEASE_LIB_DIR)
 	BIN_DIR = $(BASE_DIR)/bin/Release
 	CPPFLAGS= -g -fPIC -Wall $(INC) -Wno-invalid-offsetof
 	LDFLAGS = -g -fPIC -L$(LIB_DIR) -lpthread -llogger -lcommon -lframe -lnetevent -lcommon -ltinyxml -lhiredis -lrt -levent
-	RELEASE_TARGET = $(BIN_DIR)/push$(BIN_SUFFIX)
+	RELEASE_TARGET = $(BIN_DIR)/msgsync$(BIN_SUFFIX)
 	TARGET	= $(RELEASE_TARGET)
 endif
 
-SERVER_DIR = $(BASE_DIR)/push
+SERVER_DIR = $(BASE_DIR)/msgsync
 DISPATCH_DIR = dispatch
 LOGIC_DIR = logic
 BANK_DIR = bank
@@ -37,7 +37,7 @@ SERVER_OBJS = $(addprefix $(OBJ_DIR)/, $(subst .cpp,.o,$(SRC)))
 OBJS = $(wildcard $(OBJ_DIR)/*.o)
 
 PROJECT_INCLUDE_DIR = $(BASE_DIR)
-SERVER_INCLUDE_DIR = $(BASE_DIR)/push
+SERVER_INCLUDE_DIR = $(BASE_DIR)/msgsync
 INC = -I$(PROJECT_INCLUDE_DIR) -I$(SERVER_INCLUDE_DIR)
 
 all : $(TARGET)

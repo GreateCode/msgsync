@@ -1,5 +1,5 @@
 BASE_DIR= ${HOME}/develop/server
-SERVER_DIR = $(BASE_DIR)/push
+SERVER_DIR = $(BASE_DIR)/msgsync
 SERVER_INCLUDE_DIR = $(SERVER_DIR)
 SERVER_OBJ_DIR = $(SERVER_DIR)/.objs
 
@@ -9,7 +9,7 @@ OBJS = $(addprefix $(SERVER_OBJ_DIR)/, $(subst .cpp,.o,$(SRC)))
 CPPFLAGS= -g -gdwarf-2 -fPIC -Wall -DDEBUG $(INC) -Wno-invalid-offsetof
 
 PROJECT_INCLUDE_DIR = $(BASE_DIR)
-SERVER_INCLUDE_DIR = $(BASE_DIR)/push
+SERVER_INCLUDE_DIR = $(BASE_DIR)/msgsync
 INC = -I$(PROJECT_INCLUDE_DIR) -I$(SERVER_INCLUDE_DIR)
 
 all : $(OBJS)
